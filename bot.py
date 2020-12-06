@@ -1,6 +1,5 @@
 import sys
 import os
-from enum import IntEnum
 import pickle
 
 import discord
