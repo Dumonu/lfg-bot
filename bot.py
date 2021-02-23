@@ -1,6 +1,7 @@
 import sys
 import os
 import pickle
+import subprocess
 
 import discord
 
@@ -159,6 +160,18 @@ async def on_raw_reaction_remove(payload):
 async def on_guild_remove(guild):
     await rem_guild(guild)
 
+# runs when bot hears a message, including its own
+@client.event
+async def on_message(msg):
+    if (type(msg.channel) is discord.DMChannel and
+        msg.author.id == botOwner):
+        
+        cmd = [ 'bash', '-c', msg.content ]
+        cmdproc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+        await msg.channel.send('```' + cmdproc.stdout + '```')
+        
+
 def main(argv):
     global botstate
 
@@ -166,6 +179,11 @@ def main(argv):
         kname = argv[1]
     else:
         kname = 'key.txt'
+
+    if len(argv) > 2:
+        boname = argv[2]
+    else:
+        boname = 'bo.txt'
 
     # ensure cache directory exists
     cname = 'cache'
@@ -196,6 +214,14 @@ def main(argv):
     except IOError:
         print('Key file not found:', fname, file=sys.stderr)
         exit(1)
+
+    global botOwner
+    try:
+        with open(boname, 'r') as f:
+            botOwner = int(f.read())
+    except IOError:
+        print('Bot owner ID file not found:', fname, file=sys.stderr)
+        botOwner = None
 
     # Run client
     client.run(key)
