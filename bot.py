@@ -10,16 +10,23 @@ botstate = {}
 react_emoji = '🔴' # red_circle: U+1F534
 react_name  = 'red_circle'
 
+async def get_member(guild, uid):
+    member = guild.get_member(uid)
+    if member == None:
+        tmp = await guild.query_members(user_ids=[uid])
+        if len(tmp) > 0:
+            member = tmp[0]
+    return member
+
 async def boardmsg(guild):
-    s = 'React with :' + react_name + ': to set as looking for games.\n\n'
+    s = 'React with :' + react_name + ': to set as looking for games.\n' + \
+        'PM @lfg-bot `!all` to set as looking for games in all servers.\n\n'
     if len(botstate[guild.id]['lfg-members']) == 0:
         s += 'No members looking for games.'
         return s
     s += 'Looking for games:\n'
     for uid in botstate[guild.id]['lfg-members']:
-        member = None # guild.get_member(uid)
-        if member == None:
-            member = (await guild.query_members(user_ids=[uid]))[0]
+        member = await get_member(guild, uid)
         s += member.display_name + '\n'
     return s
 
@@ -70,9 +77,7 @@ async def rem_guild(guild):
 async def refr_guild(guild):
     oldmembers = botstate[guild.id]['lfg-members'][:]
     for mem in oldmembers:
-        member = guild.get_member(mem)
-        if member == None:
-            member = (await guild.query_members(user_ids=[mem]))[0]
+        member = await get_member(guild, mem)
         await rem_lfg(guild, member)
 
     channel = guild.get_channel(botstate[guild.id]['bot-channel'])
@@ -86,9 +91,7 @@ async def refr_guild(guild):
                 if type(user) == discord.Member:
                     member = user
                 else:
-                    member = guild.get_member(user.id)
-                    if member == None:
-                        member = (await guild.query_members(user_ids=[user.id]))[0]
+                    member = await get_member(guild, user.id)
                 await add_lfg(guild, member)
 
 async def add_lfg(guild, member):
@@ -135,9 +138,7 @@ async def on_raw_reaction_add(payload):
         payload.emoji.name == react_emoji):
 
         guild  = client.get_guild(payload.guild_id)
-        member = guild.get_member(payload.user_id)
-        if member == None:
-            member = (await guild.query_members(user_ids=[payload.user_id]))[0]
+        member = await get_member(guild, payload.user_id)
         await add_lfg(guild, member)
 
 
@@ -150,9 +151,7 @@ async def on_raw_reaction_remove(payload):
         payload.emoji.name == react_emoji):
 
         guild  = client.get_guild(payload.guild_id)
-        member = guild.get_member(payload.user_id)
-        if member == None:
-            member = (await guild.query_members(user_ids=[payload.user_id]))[0]
+        member = await get_member(guild, payload.user_id)
         await rem_lfg(guild, member)
 
 # runs when bot leaves a guild
@@ -164,6 +163,33 @@ async def on_guild_remove(guild):
 @client.event
 async def on_message(msg):
     if (type(msg.channel) is discord.DMChannel and
+        msg.content == "!all"):
+
+        await msg.channel.trigger_typing()
+        res = 'Now looking for games in:\n'
+        for gid in botstate.keys():
+            guild = client.get_guild(gid)
+            member = await get_member(guild, msg.author.id)
+            if member == None:
+                continue
+            res += '\t' + guild.name + '\n'
+            await add_lfg(guild, member)
+        res += 'PM @lfg-bot `!none` to stop looking for games.'
+        await msg.channel.send(res)
+    elif (type(msg.channel) is discord.DMChannel and
+        msg.content == "!none"):
+
+        await msg.channel.trigger_typing()
+        res = 'No longer looking for games in:\n'
+        for gid in botstate.keys():
+            guild = client.get_guild(gid)
+            member = await get_member(guild, msg.author.id)
+            if member == None:
+                continue
+            res += '\t' + guild.name + '\n'
+            await rem_lfg(guild, member)
+        await msg.channel.send(res)
+    elif (type(msg.channel) is discord.DMChannel and
         msg.author.id == botOwner):
         
         cmd = [ 'bash', '-c', msg.content ]
@@ -222,6 +248,9 @@ def main(argv):
     except IOError:
         print('Bot owner ID file not found:', fname, file=sys.stderr)
         botOwner = None
+
+    import pprint
+    pprint.pprint(botstate)
 
     # Run client
     client.run(key)
